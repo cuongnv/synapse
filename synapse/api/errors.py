@@ -74,6 +74,7 @@ class Codes(object):
     INVALID_SIGNATURE = "M_INVALID_SIGNATURE"
     USER_DEACTIVATED = "M_USER_DEACTIVATED"
     BAD_ALIAS = "M_BAD_ALIAS"
+    SECURITY_KEY_IN_USE = "M_SECURITY_KEY_IN_USE"
 
 
 class CodeMessageException(RuntimeError):

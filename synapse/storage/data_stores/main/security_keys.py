@@ -168,4 +168,4 @@ class SecurityKeysStore(SecurityKeysWorkerStore):
             )
 
         except self.database_engine.module.IntegrityError:
-            raise StoreError(400, "User ID already taken.", errcode=Codes.USER_IN_USE)
+            raise StoreError(400, "Credential ID already registed.", errcode=Codes.SECURITY_KEY_IN_USE)

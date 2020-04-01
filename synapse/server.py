@@ -82,6 +82,7 @@ from synapse.handlers.stats import StatsHandler
 from synapse.handlers.sync import SyncHandler
 from synapse.handlers.typing import TypingHandler
 from synapse.handlers.user_directory import UserDirectoryHandler
+from synapse.handlers.add_security_keys import AddSecurityKeysHandler
 from synapse.http.client import InsecureInterceptableContextFactory, SimpleHttpClient
 from synapse.http.matrixfederationclient import MatrixFederationHttpClient
 from synapse.notifier import Notifier
@@ -163,6 +164,7 @@ class HomeServer(object):
         "event_creation_handler",
         "deactivate_account_handler",
         "set_password_handler",
+        "add_security_keys_handler",
         "notifier",
         "event_sources",
         "keyring",
@@ -409,6 +411,9 @@ class HomeServer(object):
 
     def build_set_password_handler(self):
         return SetPasswordHandler(self)
+
+    def build_add_security_keys_handler(self):
+        return AddSecurityKeysHandler(self)
 
     def build_event_sources(self):
         return EventSources(self)

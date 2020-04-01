@@ -16,6 +16,7 @@ import synapse.handlers.presence
 import synapse.handlers.room
 import synapse.handlers.room_member
 import synapse.handlers.set_password
+import synapse.handlers.add_security_keys
 import synapse.http.client
 import synapse.notifier
 import synapse.replication.tcp.client
@@ -71,6 +72,10 @@ class HomeServer(object):
     def get_set_password_handler(
         self,
     ) -> synapse.handlers.set_password.SetPasswordHandler:
+        pass
+    def get_add_security_keys_handler(
+        self,
+    ) -> synapse.handlers.add_security_keys.AddSecurityKeysHandler:
         pass
     def get_federation_sender(self) -> synapse.federation.sender.FederationSender:
         pass

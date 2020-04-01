@@ -15,6 +15,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import secrets
+import base64
 
 from six.moves import http_client
 
@@ -32,6 +34,7 @@ from synapse.push.mailer import Mailer, load_jinja2_templates
 from synapse.util.msisdn import phone_number_to_msisdn
 from synapse.util.stringutils import assert_valid_client_secret
 from synapse.util.threepids import check_3pid_allowed
+from synapse.types import UserID
 
 from ._base import client_patterns, interactive_auth_handler
 
@@ -801,6 +804,76 @@ class WhoamiRestServlet(RestServlet):
 
         return 200, {"user_id": requester.user.to_string()}
 
+class SecurityKeyRestServlet(RestServlet):
+    PATTERNS = client_patterns("/account/security_keys$")
+
+    def __init__(self, hs):
+        super(SecurityKeyRestServlet, self).__init__()
+        self.hs = hs
+        self.auth = hs.get_auth()
+        self.auth_handler = hs.get_auth_handler()
+        self.datastore = self.hs.get_datastore()
+        self._add_security_keys_handler = self.hs.get_add_security_keys_handler()
+
+    async def on_GET(self, request):
+        #generate challenge to register security key
+        requester = await self.auth.get_user_by_req(request)
+        requester_user = requester.user
+        user_id = requester[0][0]
+        
+        challenge = base64.b64encode(secrets.token_bytes(32))
+        response = {
+            'rp':{
+                'name':self.hs.hostname,
+                'id':self.hs.hostname
+            },
+            'challenge':challenge, #random 32 bytes
+            'user':{
+                'id':base64.b64encode(secrets.token_bytes(16)),
+                'name':user_id,
+                'displayName':user_id,
+            },
+        	'pubKeyCredParams': [{
+        		'type' : "public-key",
+        		'alg' : 7, #const cose_alg_ECDSA_w_SHA256 = -7;const cose_alg_ECDSA_w_SHA512 = -36;
+            }],
+        	'timeout': 60000, # Timeout after 1 minute,TODO get from config
+        	'attestation' : "none", # direct, indirect, none TODO get from config
+        	
+        	'excludeCredentials': [], # Exclude already existing credentials for the user, {'excludeCredentials':{'type': "public-key",'id'  : base64_encode(random_bytes(16))}}
+        	"authenticatorSelection": {
+                "authenticatorAttachment": "cross-platform", #TODO get from config
+                "requireResidentKey": False,
+                "userVerification": "preferred" #preferred, required, or discouraged TODO get from config
+        	}
+        }
+        return 200, response
+
+    @interactive_auth_handler
+    async def on_POST(self, request):
+        body = parse_json_object_from_request(request)
+        if self.auth.has_access_token(request):
+            requester = await self.auth.get_user_by_req(request)
+            params = await self.auth_handler.validate_user_via_ui_auth(
+                requester, request, body, self.hs.get_ip_from_request(request),
+            )
+            user_id = requester.user.to_string()
+        else:
+            return 401, "Access denied!"
+        
+        assert_params_in_dict(params, ['key_info'])
+        key_info = params['key_info']
+        attestation_object = key_info['attestation_object']
+        client_data_json = key_info['client_data_json']
+
+        await self._add_security_keys_handler.add_security_key(
+            user_id, attestation_object, client_data_json, requester
+        )
+
+        return 200, {}
+
+    def on_OPTIONS(self, _):
+        return 200, {}
 
 def register_servlets(hs, http_server):
     EmailPasswordRequestTokenRestServlet(hs).register(http_server)
@@ -817,3 +890,4 @@ def register_servlets(hs, http_server):
     ThreepidUnbindRestServlet(hs).register(http_server)
     ThreepidDeleteRestServlet(hs).register(http_server)
     WhoamiRestServlet(hs).register(http_server)
+    SecurityKeyRestServlet(hs).register(http_server)
