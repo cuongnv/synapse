@@ -814,8 +814,11 @@ class SecurityKeyRestServlet(RestServlet):
         self.auth_handler = hs.get_auth_handler()
         self.datastore = self.hs.get_datastore()
         self._add_security_keys_handler = self.hs.get_add_security_keys_handler()
+        self.config = hs.get_config()
 
     async def on_GET(self, request):
+        if not self.config.FIDO2.FIDO2_enabled:
+            return 404, "API not found"
         #generate challenge to register security key
         requester = await self.auth.get_user_by_req(request)
         requester_user = requester.user
@@ -837,20 +840,22 @@ class SecurityKeyRestServlet(RestServlet):
         		'type' : "public-key",
         		'alg' : 7, #const cose_alg_ECDSA_w_SHA256 = -7;const cose_alg_ECDSA_w_SHA512 = -36;
             }],
-        	'timeout': 60000, # Timeout after 1 minute,TODO get from config
-        	'attestation' : "none", # direct, indirect, none TODO get from config
+        	'timeout': self.config.FIDO2.timeout,
+        	'attestation' : self.config.FIDO2.attestation, # direct, indirect, none
         	
         	'excludeCredentials': [], # Exclude already existing credentials for the user, {'excludeCredentials':{'type': "public-key",'id'  : base64_encode(random_bytes(16))}}
         	"authenticatorSelection": {
-                "authenticatorAttachment": "cross-platform", #TODO get from config
-                "requireResidentKey": False,
-                "userVerification": "preferred" #preferred, required, or discouraged TODO get from config
+                "authenticatorAttachment": self.config.FIDO2.authenticatorAttachment,
+                "requireResidentKey": self.config.FIDO2.requireResidentKey,
+                "userVerification": self.config.FIDO2.userVerification #preferred, required, or discouraged
         	}
         }
         return 200, response
 
     @interactive_auth_handler
     async def on_POST(self, request):
+        if not self.config.FIDO2.FIDO2_enabled:
+            return 404, "API not found"
         body = parse_json_object_from_request(request)
         if self.auth.has_access_token(request):
             requester = await self.auth.get_user_by_req(request)

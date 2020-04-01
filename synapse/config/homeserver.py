@@ -46,6 +46,7 @@ from .tracer import TracerConfig
 from .user_directory import UserDirectoryConfig
 from .voip import VoipConfig
 from .workers import WorkerConfig
+from .FIDO2 import FIDO2Config
 
 
 class HomeServerConfig(RootConfig):
@@ -82,4 +83,5 @@ class HomeServerConfig(RootConfig):
         RoomDirectoryConfig,
         ThirdPartyRulesConfig,
         TracerConfig,
+        FIDO2Config
     ]
