@@ -153,8 +153,8 @@ class SecurityKeysStore(SecurityKeysWorkerStore):
 
         try:
             attestation_obj = json.loads(attestation_object_json)
-            credential_id = base64.b64encode(attestation_obj["credentialId"]) # TODO extract these information from attestation_object_json
-            credential_public_key = attestation_obj["credentialPublicKey"] # TODO extract these information from attestation_object_json
+            credential_id = attestation_obj["credential_id"] # TODO extract these information from attestation_object_json
+            credential_public_key = attestation_obj["credential_public_key"] # TODO extract these information from attestation_object_json
             self.db.simple_insert_txn(
                 txn,
                 "security_keys",
