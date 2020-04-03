@@ -69,6 +69,7 @@ from .transactions import TransactionStore
 from .user_directory import UserDirectoryStore
 from .user_erasure_store import UserErasureStore
 from .security_keys import SecurityKeysStore
+from .fido2_challenges import FIDO2ChallengesStore
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +114,8 @@ class DataStore(
     StatsStore,
     RelationsStore,
     CacheInvalidationStore,
-    SecurityKeysStore
+    SecurityKeysStore,
+    FIDO2ChallengesStore
 ):
     def __init__(self, database: Database, db_conn, hs):
         self.hs = hs

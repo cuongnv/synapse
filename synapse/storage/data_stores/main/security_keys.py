@@ -18,22 +18,14 @@
 import logging
 import re
 
-from six import iterkeys
-
 from twisted.internet import defer
 from twisted.internet.defer import Deferred
 
-from synapse.api.constants import UserTypes
-from synapse.api.errors import Codes, StoreError, SynapseError, ThreepidValidationError
-from synapse.metrics.background_process_metrics import run_as_background_process
+from synapse.api.errors import Codes, StoreError
 from synapse.storage._base import SQLBaseStore
 from synapse.storage.database import Database
 from synapse.types import UserID
-from synapse.util.caches.descriptors import cached, cachedInlineCallbacks
 import json
-import base64
-
-THIRTY_MINUTES_IN_MS = 30 * 60 * 1000
 
 logger = logging.getLogger(__name__)
 
@@ -45,20 +37,17 @@ class SecurityKeysWorkerStore(SQLBaseStore):
         self.config = hs.config
         self.clock = hs.get_clock()
 
-    @cached()
     def get_credential_lists_by_id(self, user_id):
-        return self.db.simple_select_one(
+        return self.db.simple_select_list(
             table="security_keys",
             keyvalues={"user_id": user_id},
             retcols=[
                 "credential_id",
                 "credential_public_key"
             ],
-            allow_none=True,
             desc="get_credential_lists_by_id",
         )
 
-    @cached()
     def get_user_by_credential_id(self, credential_id):
         """Get a user from the given credential id.
 
@@ -168,4 +157,4 @@ class SecurityKeysStore(SecurityKeysWorkerStore):
             )
 
         except self.database_engine.module.IntegrityError:
-            raise StoreError(400, "Credential ID already registed.", errcode=Codes.SECURITY_KEY_IN_USE)
+            raise StoreError(400, "Credential ID already registed.", errcode=Codes.FIDO2_SECURITY_KEY_IN_USE)

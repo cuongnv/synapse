@@ -17,10 +17,11 @@
 import logging
 import secrets
 import base64
+import json
 
 from six.moves import http_client
 
-from synapse.api.constants import LoginType
+from synapse.api.constants import LoginType, FIDO2Type
 from synapse.api.errors import Codes, SynapseError, ThreepidValidationError
 from synapse.config.emailconfig import ThreepidBehaviour
 from synapse.http.server import finish_request
@@ -824,7 +825,26 @@ class SecurityKeyRestServlet(RestServlet):
         requester_user = requester.user
         user_id = requester[0][0]
         
-        challenge = base64.b64encode(secrets.token_bytes(32))
+        
+        # TODO Get exclude list from database to ignore already credential ID list
+        if user_id.startswith("@"):
+            qualified_user_id = user_id
+        else:
+            qualified_user_id = UserID(user_id, self.hs.hostname).to_string()
+        credential_list = await self.auth_handler.get_credential_lists_by_id(qualified_user_id)
+        exclude_credentials = []
+        for cred in credential_list:
+            logger.info(cred)
+            exclude_credentials.append({
+                "type":"public-key",
+                "id" : cred['credential_id']
+            })
+
+        challenge = base64.b64encode(secrets.token_bytes(32)).decode('ascii')
+        # TODO store challenge
+        self.auth_handler.store_challenge(qualified_user_id, challenge, FIDO2Type.REGISTER)
+
+        # Follow document at https://w3c.github.io/webauthn/#dictdef-publickeycredentialcreationoptions
         response = {
             'rp':{
                 'name':self.hs.hostname,
@@ -832,9 +852,9 @@ class SecurityKeyRestServlet(RestServlet):
             },
             'challenge':challenge, #random 32 bytes
             'user':{
-                'id':base64.b64encode(secrets.token_bytes(16)),
-                'name':user_id,
-                'displayName':user_id,
+                'id':base64.b64encode(secrets.token_bytes(16)).decode('ascii'),
+                'name':qualified_user_id,
+                'displayName':qualified_user_id,
             },
         	'pubKeyCredParams': [{
         		'type' : "public-key",
@@ -843,7 +863,7 @@ class SecurityKeyRestServlet(RestServlet):
         	'timeout': self.config.FIDO2.timeout,
         	'attestation' : self.config.FIDO2.attestation, # direct, indirect, none
         	
-        	'excludeCredentials': [], # Exclude already existing credentials for the user, {'excludeCredentials':{'type': "public-key",'id'  : base64_encode(random_bytes(16))}}
+        	'excludeCredentials': exclude_credentials, # Exclude already existing credentials for the user, {'excludeCredentials':{'type': "public-key",'id'  : base64_encode(random_bytes(16))}}
         	"authenticatorSelection": {
                 "authenticatorAttachment": self.config.FIDO2.authenticatorAttachment,
                 "requireResidentKey": self.config.FIDO2.requireResidentKey,
@@ -870,12 +890,18 @@ class SecurityKeyRestServlet(RestServlet):
         key_info = params['key_info']
         attestation_object = key_info['attestation_object']
         client_data_json = key_info['client_data_json']
-
-        await self._add_security_keys_handler.add_security_key(
-            user_id, attestation_object, client_data_json, requester
-        )
-
-        return 200, {}
+        # Need to verify with challenge that we sent before adding to database?
+        # GET challenge with type
+        challenge = await self.auth_handler.get_latest_challenge_by_user(user_id, FIDO2Type.REGISTER)
+        client_data_json_obj = json.loads(client_data_json)
+        if ("challenge" in client_data_json_obj) and (challenge == client_data_json_obj["challenge"]):
+            self.auth_handler.delete_challeges_of_user(user_id, FIDO2Type.REGISTER)
+            await self._add_security_keys_handler.add_security_key(
+                user_id, attestation_object, client_data_json, requester
+            )
+            return 200, {}
+        else:
+            raise SynapseError(404, "Can not verify challenge!", Codes.FIDO2_CHALLENGE_NOT_FOUND)
 
     def on_OPTIONS(self, _):
         return 200, {}

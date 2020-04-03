@@ -19,6 +19,9 @@ import time
 import unicodedata
 import urllib.parse
 from typing import Any, Dict, Iterable, List, Optional
+import secrets
+import json
+import base64
 
 import attr
 import bcrypt  # type: ignore[import]
@@ -727,6 +730,15 @@ class AuthHandler(BaseHandler):
             if canonical_user_id:
                 return canonical_user_id, None
 
+        if login_type == LoginType.FIDO2:
+            logger.info("Do FIDO2 login!")
+            known_login_type = True
+            # We will do login with fido2 here
+            # TODO need do register first!
+            canonical_user_id = yield self._check_fido2_login(qualified_user_id, login_submission)
+            if canonical_user_id:
+                return canonical_user_id, None
+
         if not known_login_type:
             raise SynapseError(400, "Unknown login type %s" % login_type)
 
@@ -1049,7 +1061,92 @@ class AuthHandler(BaseHandler):
         query.update({param_name: param})
         url_parts[4] = urllib.parse.urlencode(query)
         return urllib.parse.urlunparse(url_parts)
+    
+    def store_challenge(self, user_id, challenge, type):
+        self.store.add_challenge_to_user(user_id, challenge, type)
 
+    @defer.inlineCallbacks
+    def get_latest_challenge_by_user(self, user_id, type):
+        result = yield self.store.get_latest_challenge_by_user(user_id, type)
+        if len(result) == 1:
+            return result[0]['challenge']
+        else:
+            return ""
+
+    def delete_challeges_of_user(self, user_id, type):
+        self.store.delete_challeges_of_user(user_id, type)
+
+    @defer.inlineCallbacks
+    def generate_challenge(self, user_id: str, login_submission: Dict[str, Any]):
+        logger.info("generate_challenge")
+        credential_list = yield self.store.get_credential_lists_by_id(user_id)
+        allow_list = []
+        for cred in credential_list:
+            logger.info(cred)
+            allow_list.append({
+                "type":"public-key",
+                "id" : cred['credential_id']
+            })
+        challenge = base64.b64encode(secrets.token_bytes(32)).decode("ascii")
+        #TODO save challenge for verify at next step
+
+        logger.info(self.hs.config.FIDO2.timeout)
+        logger.info(self.hs.config.FIDO2.userVerification)
+        # Follow document at https://developer.mozilla.org/en-US/docs/Web/API/PublicKeyCredentialRequestOptions
+        response = {
+            "challenge":challenge,
+            "timeout":self.hs.config.FIDO2.timeout,
+            "rpId":self.hs.hostname,
+            "allowCredentials":allow_list,
+            "userVerification":self.hs.config.FIDO2.userVerification
+        }
+        return response
+
+    @defer.inlineCallbacks
+    def get_credential_lists_by_id(self, user_id: str):
+        credential_list = []
+        credential_list = yield self.store.get_credential_lists_by_id(user_id)
+        return credential_list
+
+    @defer.inlineCallbacks
+    def _check_fido2_login(self, user_id: str, login_submission: Dict[str, Any]):
+        """Authenticate a user with security key.
+
+        user_id is checked case insensitively, but will return None if there are
+        multiple inexact matches.
+
+        Args:
+            user_id: complete @user:id
+            login_submission: the provided attestation object and client data json
+        Returns:
+            Deferred[unicode] the canonical_user_id, or Deferred[None] if
+                unknown user/bad password
+        """
+        logger.info("_check_fido2_login")
+        
+        lookupres = yield self._find_user_id_and_pwd_hash(user_id)
+        if not lookupres:
+            return None
+        (user_id, password_hash) = lookupres
+
+        # If the password hash is None, the account has likely been deactivated
+        if not password_hash:
+            deactivated = yield self.store.get_user_deactivated_status(user_id)
+            if deactivated:
+                raise UserDeactivatedError("This account has been deactivated")
+
+        # Find security key corresponded to user
+        try:
+            credential_id = login_submission['credential_id']
+            signature = login_submission['signature']
+            client_data_json = login_submission['client_data_json']
+            authenticator_data = login_submission['authenticator_data']
+            # challenge = 
+            # self.store.
+        except:
+            return None
+
+        return user_id
 
 @attr.s
 class MacaroonGenerator(object):

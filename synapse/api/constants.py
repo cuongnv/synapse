@@ -62,6 +62,7 @@ class LoginType(object):
     RECAPTCHA = "m.login.recaptcha"
     TERMS = "m.login.terms"
     DUMMY = "m.login.dummy"
+    FIDO2 = "m.login.fido2"
 
     # Only for C/S API v1
     APPLICATION_SERVICE = "m.login.application_service"
@@ -151,3 +152,7 @@ class EventContentFields(object):
     # Timestamp to delete the event after
     # cf https://github.com/matrix-org/matrix-doc/pull/2228
     SELF_DESTRUCT_AFTER = "org.matrix.self_destruct_after"
+
+class FIDO2Type(object):
+    REGISTER = 0
+    LOGIN = 1
