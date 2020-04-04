@@ -30,7 +30,7 @@ import pymacaroons
 from twisted.internet import defer
 
 import synapse.util.stringutils as stringutils
-from synapse.api.constants import LoginType
+from synapse.api.constants import LoginType, FIDO2Type
 from synapse.api.errors import (
     AuthError,
     Codes,
@@ -1088,7 +1088,8 @@ class AuthHandler(BaseHandler):
                 "id" : cred['credential_id']
             })
         challenge = base64.b64encode(secrets.token_bytes(32)).decode("ascii")
-        #TODO save challenge for verify at next step
+        #Save challenge for verify at next step
+        self.store_challenge(user_id, challenge, FIDO2Type.LOGIN)
 
         logger.info(self.hs.config.FIDO2.timeout)
         logger.info(self.hs.config.FIDO2.userVerification)
@@ -1141,8 +1142,13 @@ class AuthHandler(BaseHandler):
             signature = login_submission['signature']
             client_data_json = login_submission['client_data_json']
             authenticator_data = login_submission['authenticator_data']
-            # challenge = 
-            # self.store.
+            challenge = yield self.get_latest_challenge_by_user(user_id, FIDO2Type.LOGIN)
+            logger.info("challenge -> " + challenge)
+            #start verify
+            
+
+
+
         except:
             return None
 

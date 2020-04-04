@@ -74,6 +74,7 @@ class LoginRestServlet(RestServlet):
     SSO_TYPE = "m.login.sso"
     TOKEN_TYPE = "m.login.token"
     JWT_TYPE = "m.login.jwt"
+    FIDO_TYPE = "m.login.fido2"
 
     def __init__(self, hs):
         super(LoginRestServlet, self).__init__()
@@ -91,6 +92,7 @@ class LoginRestServlet(RestServlet):
         self._address_ratelimiter = Ratelimiter()
         self._account_ratelimiter = Ratelimiter()
         self._failed_attempts_ratelimiter = Ratelimiter()
+        self.fido2_enabled = hs.config.FIDO2.FIDO2_enabled
 
     def on_GET(self, request):
         flows = []
@@ -114,6 +116,8 @@ class LoginRestServlet(RestServlet):
             # fall back to the fallback API if they don't understand one of the
             # login flow types returned.
             flows.append({"type": LoginRestServlet.TOKEN_TYPE})
+        if self.fido2_enabled:
+            flows.append({"type": LoginRestServlet.FIDO_TYPE})
 
         flows.extend(
             ({"type": t} for t in self.auth_handler.get_supported_login_types())
@@ -141,6 +145,8 @@ class LoginRestServlet(RestServlet):
                 result = await self.do_jwt_login(login_submission)
             elif login_submission["type"] == LoginRestServlet.TOKEN_TYPE:
                 result = await self.do_token_login(login_submission)
+            elif login_submission["type"] == LoginRestServlet.FIDO_TYPE:
+                result = await self.do_fido2_login(login_submission)
             else:
                 result = await self._do_other_login(login_submission)
         except KeyError:
@@ -351,6 +357,84 @@ class LoginRestServlet(RestServlet):
             await callback(result)
 
         return result
+
+    async def do_fido2_login(self, login_submission):
+        auth_handler = self.auth_handler
+        import json
+        logger.info("DO FIDO2 LOGIN! " + json.dumps(login_submission))
+        # Before we actually log them in we check if they've already logged in
+        # too often. This happens here rather than before as we don't
+        # necessarily know the user before now.
+        try:
+            if "identifier" not in login_submission:
+                raise SynapseError(400, "Missing param: identifier")
+
+            identifier = login_submission["identifier"]
+            if "type" not in identifier:
+                raise SynapseError(400, "Login identifier has no type")
+            if identifier["type"] != "m.login.fido2":
+                raise SynapseError(400, "Unknown login identifier type")
+            if "user" not in identifier:
+                raise SynapseError(400, "User identifier is missing 'user' key")
+
+            if identifier["user"].startswith("@"):
+                qualified_user_id = identifier["user"]
+            else:
+                qualified_user_id = UserID(identifier["user"], self.hs.hostname).to_string()
+            
+            self._account_ratelimiter.ratelimit(
+                qualified_user_id.lower(),
+                time_now_s=self._clock.time(),
+                rate_hz=self.hs.config.rc_login_account.per_second,
+                burst_count=self.hs.config.rc_login_account.burst_count,
+                update=True,
+            )
+
+            user_id = await self.auth_handler.check_user_exists(qualified_user_id)
+            logger.info("User_ID" + user_id)
+            if "authenticator_data" not in login_submission and "credential_id" not in login_submission:
+                #generate random challenge and send to client
+                response = await self.auth_handler.generate_challenge(qualified_user_id, login_submission)
+                return response
+            else:
+                logger.info("GO HERE")
+                try:
+                    canonical_user_id, callback = await self.auth_handler.validate_login(
+                        identifier["user"], login_submission
+                    )
+                except LoginError:
+                    # The user has failed to log in, so we need to update the rate
+                    # limiter. Using `can_do_action` avoids us raising a ratelimit
+                    # exception and masking the LoginError. The actual ratelimiting
+                    # should have happened above.
+                    self._failed_attempts_ratelimiter.can_do_action(
+                        qualified_user_id.lower(),
+                        time_now_s=self._clock.time(),
+                        rate_hz=self.hs.config.rc_login_failed_attempts.per_second,
+                        burst_count=self.hs.config.rc_login_failed_attempts.burst_count,
+                        update=True,
+                    )
+                    raise
+
+                device_id = login_submission.get("device_id")
+                initial_display_name = login_submission.get("initial_device_display_name")
+                device_id, access_token = await self.registration_handler.register_device(
+                    user_id, device_id, initial_display_name
+                )
+
+                result = {
+                    "user_id": user_id,
+                    "access_token": access_token,
+                    "home_server": self.hs.hostname,
+                    "device_id": device_id,
+                }
+                return result
+        except Exception as e:
+            logger.info(e)
+            raise LoginError(
+                401, "user_id is missing", errcode=Codes.UNAUTHORIZED
+            )
+        
 
     async def do_token_login(self, login_submission):
         token = login_submission["token"]

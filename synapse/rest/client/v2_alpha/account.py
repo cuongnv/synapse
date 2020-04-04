@@ -896,6 +896,7 @@ class SecurityKeyRestServlet(RestServlet):
         client_data_json_obj = json.loads(client_data_json)
         if ("challenge" in client_data_json_obj) and (challenge == client_data_json_obj["challenge"]):
             self.auth_handler.delete_challeges_of_user(user_id, FIDO2Type.REGISTER)
+            #TODO decode attestation_object to get credentialId,credentialPublicKey
             await self._add_security_keys_handler.add_security_key(
                 user_id, attestation_object, client_data_json, requester
             )
