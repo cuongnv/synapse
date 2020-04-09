@@ -895,7 +895,7 @@ class SecurityKeyRestServlet(RestServlet):
         # Verify here
         # GET challenge with type
         challenge = await self.auth_handler.get_latest_challenge_by_user(user_id, FIDO2Type.REGISTER)
-        client_data_json = base64.b64decode(client_data_json).decode('ascii')
+        client_data_json = base64.b64decode(client_data_json + "===", altchars="-_").decode('ascii')
         rpId = self.hs.hostname  
         attestation_object_bytes = base64.b64decode(attestation_object + "===", altchars="-_")
         attestation_object = verify_register(rpId, client_data_json, attestation_object_bytes, challenge)
