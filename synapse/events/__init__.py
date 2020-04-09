@@ -310,6 +310,24 @@ class EventBase(metaclass=abc.ABCMeta):
         """
         return [e for e, _ in self.auth_events]
 
+    def prev_event_ids(self):
+        """Returns the list of prev event IDs. The order matches the order
+        specified in the event, though there is no meaning to it.
+
+        Returns:
+            list[str]: The list of event IDs of this event's prev_events
+        """
+        return [e for e, _ in self.prev_events]
+
+    def auth_event_ids(self):
+        """Returns the list of auth event IDs. The order matches the order
+        specified in the event, though there is no meaning to it.
+
+        Returns:
+            list[str]: The list of event IDs of this event's auth_events
+        """
+        return [e for e, _ in self.auth_events]
+
 
 class FrozenEvent(EventBase):
     format_version = EventFormatVersions.V1  # All events of this type are V1

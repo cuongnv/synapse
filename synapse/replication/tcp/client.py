@@ -16,26 +16,18 @@
 """
 
 import logging
-from typing import Dict, List, Optional
 
 from twisted.internet import defer
 from twisted.internet.protocol import ReconnectingClientFactory
 
-from synapse.replication.slave.storage._base import BaseSlavedStore
-from synapse.replication.tcp.protocol import (
-    AbstractReplicationClientHandler,
-    ClientReplicationStreamProtocol,
-)
-
 from .commands import (
-    Command,
     FederationAckCommand,
     InvalidateCacheCommand,
-    RemoteServerUpCommand,
     RemovePusherCommand,
     UserIpCommand,
     UserSyncCommand,
 )
+from .protocol import ClientReplicationStreamProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +39,9 @@ class ReplicationClientFactory(ReconnectingClientFactory):
     Accepts a handler that will be called when new data is available or data
     is required.
     """
+    maxDelay = 5  # Try at least once every N seconds
 
-    initialDelay = 0.1
-    maxDelay = 1  # Try at least once every N seconds
-
-    def __init__(self, hs, client_name, handler: AbstractReplicationClientHandler):
+    def __init__(self, hs, client_name, handler):
         self.client_name = client_name
         self.handler = handler
         self.server_name = hs.config.server_name
@@ -64,6 +54,7 @@ class ReplicationClientFactory(ReconnectingClientFactory):
 
     def buildProtocol(self, addr):
         logger.info("Connected to replication: %r", addr)
+        self.resetDelay()
         return ClientReplicationStreamProtocol(
             self.client_name, self.server_name, self._clock, self.handler
         )
@@ -74,16 +65,17 @@ class ReplicationClientFactory(ReconnectingClientFactory):
 
     def clientConnectionFailed(self, connector, reason):
         logger.error("Failed to connect to replication: %r", reason)
-        ReconnectingClientFactory.clientConnectionFailed(self, connector, reason)
+        ReconnectingClientFactory.clientConnectionFailed(
+            self, connector, reason
+        )
 
 
-class ReplicationClientHandler(AbstractReplicationClientHandler):
+class ReplicationClientHandler(object):
     """A base handler that can be passed to the ReplicationClientFactory.
 
     By default proxies incoming replication data to the SlaveStore.
     """
-
-    def __init__(self, store: BaseSlavedStore):
+    def __init__(self, store):
         self.store = store
 
         # The current connection. None if we are currently (re)connecting
@@ -91,48 +83,39 @@ class ReplicationClientHandler(AbstractReplicationClientHandler):
 
         # Any pending commands to be sent once a new connection has been
         # established
-        self.pending_commands = []  # type: List[Command]
+        self.pending_commands = []
 
         # Map from string -> deferred, to wake up when receiveing a SYNC with
         # the given string.
         # Used for tests.
-        self.awaiting_syncs = {}  # type: Dict[str, defer.Deferred]
-
-        # The factory used to create connections.
-        self.factory = None  # type: Optional[ReplicationClientFactory]
+        self.awaiting_syncs = {}
 
     def start_replication(self, hs):
         """Helper method to start a replication connection to the remote server
         using TCP.
         """
         client_name = hs.config.worker_name
-        self.factory = ReplicationClientFactory(hs, client_name, self)
+        factory = ReplicationClientFactory(hs, client_name, self)
         host = hs.config.worker_replication_host
         port = hs.config.worker_replication_port
-        hs.get_reactor().connectTCP(host, port, self.factory)
+        hs.get_reactor().connectTCP(host, port, factory)
 
-    async def on_rdata(self, stream_name, token, rows):
-        """Called to handle a batch of replication data with a given stream token.
+    def on_rdata(self, stream_name, token, rows):
+        """Called when we get new replication data. By default this just pokes
+        the slave store.
 
-        By default this just pokes the slave store. Can be overridden in subclasses to
-        handle more.
-
-        Args:
-            stream_name (str): name of the replication stream for this batch of rows
-            token (int): stream token for this batch of rows
-            rows (list): a list of Stream.ROW_TYPE objects as returned by
-                Stream.parse_row.
+        Can be overriden in subclasses to handle more.
         """
         logger.debug("Received rdata %s -> %s", stream_name, token)
-        self.store.process_replication_rows(stream_name, token, rows)
+        return self.store.process_replication_rows(stream_name, token, rows)
 
-    async def on_position(self, stream_name, token):
+    def on_position(self, stream_name, token):
         """Called when we get new position data. By default this just pokes
         the slave store.
 
         Can be overriden in subclasses to handle more.
         """
-        self.store.process_replication_rows(stream_name, token, [])
+        return self.store.process_replication_rows(stream_name, token, [])
 
     def on_sync(self, data):
         """When we received a SYNC we wake up any deferreds that were waiting
@@ -144,16 +127,11 @@ class ReplicationClientHandler(AbstractReplicationClientHandler):
         if d:
             d.callback(data)
 
-    def on_remote_server_up(self, server: str):
-        """Called when get a new REMOTE_SERVER_UP command."""
-
-    def get_streams_to_replicate(self) -> Dict[str, int]:
+    def get_streams_to_replicate(self):
         """Called when a new connection has been established and we need to
         subscribe to streams.
 
-        Returns:
-            map from stream name to the most recent update we have for
-            that stream (ie, the point we want to start replicating from)
+        Returns a dictionary of stream name to token.
         """
         args = self.store.stream_positions()
         user_account_data = args.pop("user_account_data", None)
@@ -162,7 +140,6 @@ class ReplicationClientHandler(AbstractReplicationClientHandler):
             args["account_data"] = user_account_data
         elif room_account_data:
             args["account_data"] = room_account_data
-
         return args
 
     def get_currently_syncing_users(self):
@@ -179,7 +156,7 @@ class ReplicationClientHandler(AbstractReplicationClientHandler):
         if self.connection:
             self.connection.send_command(cmd)
         else:
-            logger.warning("Queuing command as not connected: %r", cmd.NAME)
+            logger.warn("Queuing command as not connected: %r", cmd.NAME)
             self.pending_commands.append(cmd)
 
     def send_federation_ack(self, token):
@@ -211,9 +188,6 @@ class ReplicationClientHandler(AbstractReplicationClientHandler):
         cmd = UserIpCommand(user_id, access_token, ip, user_agent, device_id, last_seen)
         self.send_command(cmd)
 
-    def send_remote_server_up(self, server: str):
-        self.send_command(RemoteServerUpCommand(server))
-
     def await_sync(self, data):
         """Returns a deferred that is resolved when we receive a SYNC command
         with given data.
@@ -230,15 +204,3 @@ class ReplicationClientHandler(AbstractReplicationClientHandler):
             for cmd in self.pending_commands:
                 connection.send_command(cmd)
             self.pending_commands = []
-
-    def finished_connecting(self):
-        """Called when we have successfully subscribed and caught up to all
-        streams we're interested in.
-        """
-        logger.info("Finished connecting to server")
-
-        # We don't reset the delay any earlier as otherwise if there is a
-        # problem during start up we'll end up tight looping connecting to the
-        # server.
-        if self.factory:
-            self.factory.resetDelay()

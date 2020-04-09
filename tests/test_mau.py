@@ -17,7 +17,7 @@
 
 import json
 
-from mock import Mock
+from mock import Mock, NonCallableMock
 
 from synapse.api.constants import LoginType
 from synapse.api.errors import Codes, HttpResponseException, SynapseError
@@ -33,7 +33,10 @@ class TestMauLimit(unittest.HomeserverTestCase):
     def make_homeserver(self, reactor, clock):
 
         self.hs = self.setup_test_homeserver(
-            "red", http_client=None, federation_client=Mock()
+            "red",
+            http_client=None,
+            federation_client=Mock(),
+            ratelimiter=NonCallableMock(spec_set=["send_message"]),
         )
 
         self.store = self.hs.get_datastore()
@@ -168,24 +171,6 @@ class TestMauLimit(unittest.HomeserverTestCase):
         self.assertEqual(e.code, 403)
         self.assertEqual(e.errcode, Codes.RESOURCE_LIMIT_EXCEEDED)
 
-    def test_tracked_but_not_limited(self):
-        self.hs.config.max_mau_value = 1  # should not matter
-        self.hs.config.limit_usage_by_mau = False
-        self.hs.config.mau_stats_only = True
-
-        # Simply being able to create 2 users indicates that the
-        # limit was not reached.
-        token1 = self.create_user("kermit1")
-        self.do_sync_for_user(token1)
-        token2 = self.create_user("kermit2")
-        self.do_sync_for_user(token2)
-
-        # We do want to verify that the number of tracked users
-        # matches what we want though
-        count = self.store.get_monthly_active_count()
-        self.reactor.advance(100)
-        self.assertEqual(2, self.successResultOf(count))
-
     def create_user(self, localpart):
         request_data = json.dumps(
             {
@@ -208,7 +193,9 @@ class TestMauLimit(unittest.HomeserverTestCase):
         return access_token
 
     def do_sync_for_user(self, token):
-        request, channel = self.make_request("GET", "/sync", access_token=token)
+        request, channel = self.make_request(
+            "GET", "/sync", access_token=token
+        )
         self.render(request)
 
         if channel.code != 200:

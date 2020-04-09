@@ -13,10 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from os import path
-
-from synapse.config import ConfigError
-
 from ._base import Config
 
 DEFAULT_CONFIG = """\
@@ -54,30 +50,27 @@ DEFAULT_CONFIG = """\
 # for an account. Has no effect unless `require_at_registration` is enabled.
 # Defaults to "Privacy Policy".
 #
-#user_consent:
-#  template_dir: res/templates/privacy
-#  version: 1.0
-#  server_notice_content:
-#    msgtype: m.text
-#    body: >-
-#      To continue using this homeserver you must review and agree to the
-#      terms and conditions at %(consent_uri)s
-#  send_server_notice_to_guests: true
-#  block_events_error: >-
-#    To continue using this homeserver you must review and agree to the
-#    terms and conditions at %(consent_uri)s
-#  require_at_registration: false
-#  policy_name: Privacy Policy
+# user_consent:
+#   template_dir: res/templates/privacy
+#   version: 1.0
+#   server_notice_content:
+#     msgtype: m.text
+#     body: >-
+#       To continue using this homeserver you must review and agree to the
+#       terms and conditions at %(consent_uri)s
+#   send_server_notice_to_guests: True
+#   block_events_error: >-
+#     To continue using this homeserver you must review and agree to the
+#     terms and conditions at %(consent_uri)s
+#   require_at_registration: False
+#   policy_name: Privacy Policy
 #
 """
 
 
 class ConsentConfig(Config):
-
-    section = "consent"
-
-    def __init__(self, *args):
-        super(ConsentConfig, self).__init__(*args)
+    def __init__(self):
+        super(ConsentConfig, self).__init__()
 
         self.user_consent_version = None
         self.user_consent_template_dir = None
@@ -87,32 +80,27 @@ class ConsentConfig(Config):
         self.user_consent_at_registration = False
         self.user_consent_policy_name = "Privacy Policy"
 
-    def read_config(self, config, **kwargs):
+    def read_config(self, config):
         consent_config = config.get("user_consent")
         if consent_config is None:
             return
         self.user_consent_version = str(consent_config["version"])
-        self.user_consent_template_dir = self.abspath(consent_config["template_dir"])
-        if not path.isdir(self.user_consent_template_dir):
-            raise ConfigError(
-                "Could not find template directory '%s'"
-                % (self.user_consent_template_dir,)
-            )
+        self.user_consent_template_dir = consent_config["template_dir"]
         self.user_consent_server_notice_content = consent_config.get(
-            "server_notice_content"
+            "server_notice_content",
         )
         self.block_events_without_consent_error = consent_config.get(
-            "block_events_error"
+            "block_events_error",
         )
-        self.user_consent_server_notice_to_guests = bool(
-            consent_config.get("send_server_notice_to_guests", False)
-        )
-        self.user_consent_at_registration = bool(
-            consent_config.get("require_at_registration", False)
-        )
+        self.user_consent_server_notice_to_guests = bool(consent_config.get(
+            "send_server_notice_to_guests", False,
+        ))
+        self.user_consent_at_registration = bool(consent_config.get(
+            "require_at_registration", False,
+        ))
         self.user_consent_policy_name = consent_config.get(
-            "policy_name", "Privacy Policy"
+            "policy_name", "Privacy Policy",
         )
 
-    def generate_config_section(self, **kwargs):
+    def default_config(self, **kwargs):
         return DEFAULT_CONFIG

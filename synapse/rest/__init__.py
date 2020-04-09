@@ -13,10 +13,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import synapse.rest.admin
+
+from six import PY3
+
 from synapse.http.server import JsonResource
 from synapse.rest.client import versions
 from synapse.rest.client.v1 import (
+    admin,
     directory,
     events,
     initial_sync,
@@ -32,9 +35,7 @@ from synapse.rest.client.v1 import (
 from synapse.rest.client.v2_alpha import (
     account,
     account_data,
-    account_validity,
     auth,
-    capabilities,
     devices,
     filter,
     groups,
@@ -44,7 +45,6 @@ from synapse.rest.client.v2_alpha import (
     read_marker,
     receipts,
     register,
-    relations,
     report_event,
     room_keys,
     room_upgrade_rest_servlet,
@@ -56,16 +56,14 @@ from synapse.rest.client.v2_alpha import (
     user_directory,
 )
 
+if not PY3:
+    from synapse.rest.client.v1_only import (
+        register as v1_register,
+    )
+
 
 class ClientRestResource(JsonResource):
-    """Matrix Client API REST resource.
-
-    This gets mounted at various points under /_matrix/client, including:
-       * /_matrix/client/r0
-       * /_matrix/client/api/v1
-       * /_matrix/client/unstable
-       * etc
-    """
+    """A resource for version 1 of the matrix client API."""
 
     def __init__(self, hs):
         JsonResource.__init__(self, hs, canonical_json=False)
@@ -73,7 +71,11 @@ class ClientRestResource(JsonResource):
 
     @staticmethod
     def register_servlets(client_resource, hs):
-        versions.register_servlets(hs, client_resource)
+        versions.register_servlets(client_resource)
+
+        if not PY3:
+            # "v1" (Python 2 only)
+            v1_register.register_servlets(hs, client_resource)
 
         # Deprecated in r0
         initial_sync.register_servlets(hs, client_resource)
@@ -89,6 +91,7 @@ class ClientRestResource(JsonResource):
         presence.register_servlets(hs, client_resource)
         directory.register_servlets(hs, client_resource)
         voip.register_servlets(hs, client_resource)
+        admin.register_servlets(hs, client_resource)
         pusher.register_servlets(hs, client_resource)
         push_rule.register_servlets(hs, client_resource)
         logout.register_servlets(hs, client_resource)
@@ -115,11 +118,3 @@ class ClientRestResource(JsonResource):
         user_directory.register_servlets(hs, client_resource)
         groups.register_servlets(hs, client_resource)
         room_upgrade_rest_servlet.register_servlets(hs, client_resource)
-        capabilities.register_servlets(hs, client_resource)
-        account_validity.register_servlets(hs, client_resource)
-        relations.register_servlets(hs, client_resource)
-
-        # moving to /_synapse/admin
-        synapse.rest.admin.register_servlets_for_client_rest_resource(
-            hs, client_resource
-        )

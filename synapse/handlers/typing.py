@@ -82,6 +82,15 @@ class TypingHandler(object):
         # map room IDs to sets of users currently typing
         self._room_typing = {}
 
+    def _reset(self):
+        """
+        Reset the typing handler's data caches.
+        """
+        # map room IDs to serial numbers
+        self._room_serials = {}
+        # map room IDs to sets of users currently typing
+        self._room_typing = {}
+
     def _handle_timeouts(self):
         logger.debug("Checking for typing timeouts")
 

@@ -17,17 +17,21 @@ from mock import Mock
 
 from twisted.internet.defer import Deferred
 
-import synapse.rest.admin
-from synapse.logging.context import make_deferred_yieldable
-from synapse.rest.client.v1 import login, room
+from synapse.rest.client.v1 import admin, login, room
 
 from tests.unittest import HomeserverTestCase
+
+try:
+    from synapse.push.mailer import load_jinja2_templates
+except Exception:
+    load_jinja2_templates = None
 
 
 class HTTPPusherTests(HomeserverTestCase):
 
+    skip = "No Jinja installed" if not load_jinja2_templates else None
     servlets = [
-        synapse.rest.admin.register_servlets_for_client_rest_resource,
+        admin.register_servlets,
         room.register_servlets,
         login.register_servlets,
     ]
@@ -43,14 +47,14 @@ class HTTPPusherTests(HomeserverTestCase):
         def post_json_get_json(url, body):
             d = Deferred()
             self.push_attempts.append((d, url, body))
-            return make_deferred_yieldable(d)
+            return d
 
         m.post_json_get_json = post_json_get_json
 
         config = self.default_config()
-        config["start_pushers"] = True
+        config.start_pushers = True
 
-        hs = self.setup_test_homeserver(config=config, proxied_http_client=m)
+        hs = self.setup_test_homeserver(config=config, simple_http_client=m)
 
         return hs
 
@@ -102,9 +106,8 @@ class HTTPPusherTests(HomeserverTestCase):
 
         # Get the stream ordering before it gets sent
         pushers = self.get_success(
-            self.hs.get_datastore().get_pushers_by({"user_name": user_id})
+            self.hs.get_datastore().get_pushers_by(dict(user_name=user_id))
         )
-        pushers = list(pushers)
         self.assertEqual(len(pushers), 1)
         last_stream_ordering = pushers[0]["last_stream_ordering"]
 
@@ -113,9 +116,8 @@ class HTTPPusherTests(HomeserverTestCase):
 
         # It hasn't succeeded yet, so the stream ordering shouldn't have moved
         pushers = self.get_success(
-            self.hs.get_datastore().get_pushers_by({"user_name": user_id})
+            self.hs.get_datastore().get_pushers_by(dict(user_name=user_id))
         )
-        pushers = list(pushers)
         self.assertEqual(len(pushers), 1)
         self.assertEqual(last_stream_ordering, pushers[0]["last_stream_ordering"])
 
@@ -132,9 +134,8 @@ class HTTPPusherTests(HomeserverTestCase):
 
         # The stream ordering has increased
         pushers = self.get_success(
-            self.hs.get_datastore().get_pushers_by({"user_name": user_id})
+            self.hs.get_datastore().get_pushers_by(dict(user_name=user_id))
         )
-        pushers = list(pushers)
         self.assertEqual(len(pushers), 1)
         self.assertTrue(pushers[0]["last_stream_ordering"] > last_stream_ordering)
         last_stream_ordering = pushers[0]["last_stream_ordering"]
@@ -152,8 +153,7 @@ class HTTPPusherTests(HomeserverTestCase):
 
         # The stream ordering has increased, again
         pushers = self.get_success(
-            self.hs.get_datastore().get_pushers_by({"user_name": user_id})
+            self.hs.get_datastore().get_pushers_by(dict(user_name=user_id))
         )
-        pushers = list(pushers)
         self.assertEqual(len(pushers), 1)
         self.assertTrue(pushers[0]["last_stream_ordering"] > last_stream_ordering)
