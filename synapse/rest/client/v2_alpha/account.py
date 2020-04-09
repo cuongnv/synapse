@@ -36,6 +36,7 @@ from synapse.util.msisdn import phone_number_to_msisdn
 from synapse.util.stringutils import assert_valid_client_secret
 from synapse.util.threepids import check_3pid_allowed
 from synapse.types import UserID
+from synapse.util.fido2.webauthn import verify_register
 
 from ._base import client_patterns, interactive_auth_handler
 
@@ -891,10 +892,15 @@ class SecurityKeyRestServlet(RestServlet):
         attestation_object = key_info['attestation_object']
         client_data_json = key_info['client_data_json']
         # Need to verify with challenge that we sent before adding to database?
+        # Verify here
         # GET challenge with type
         challenge = await self.auth_handler.get_latest_challenge_by_user(user_id, FIDO2Type.REGISTER)
+        client_data_json = base64.b64decode(client_data_json).decode('ascii')
+        rpId = self.hs.hostname  
+        attestation_object_bytes = base64.b64decode(attestation_object + "===", altchars="-_")
+        attestation_object = verify_register(rpId, client_data_json, attestation_object_bytes, challenge)
         client_data_json_obj = json.loads(client_data_json)
-        if ("challenge" in client_data_json_obj) and (challenge == client_data_json_obj["challenge"]):
+        if attestation_object:
             self.auth_handler.delete_challeges_of_user(user_id, FIDO2Type.REGISTER)
             #TODO decode attestation_object to get credentialId,credentialPublicKey
             await self._add_security_keys_handler.add_security_key(

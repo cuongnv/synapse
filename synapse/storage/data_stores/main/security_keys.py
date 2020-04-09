@@ -16,7 +16,7 @@
 # limitations under the License.
 
 import logging
-import re
+import re, base64
 
 from twisted.internet import defer
 from twisted.internet.defer import Deferred
@@ -80,26 +80,30 @@ class SecurityKeysStore(SecurityKeysWorkerStore):
         super(SecurityKeysStore, self).__init__(database, db_conn, hs)
 
     @defer.inlineCallbacks
-    def add_security_key_to_user(self, user_id, attestation_object_json, client_data_json):
+    def add_security_key_to_user(self, user_id, attestation_obj, client_data_json):
         """Adds an security key for the given user.
 
         Args:
             user_id (str): The user ID.
-            attestation_object_json (str): The attestation object that returned from security key.
+            attestation_object (json object): The attestation object that returned from security key.
             client_data_json (str): The client data json object that returned from platform
         Raises:
             StoreError if there was a problem adding this.
         """
-        attestation_obj = json.loads(attestation_object_json)
         credential_id = attestation_obj["credential_id"]
         credential_public_key = attestation_obj["credential_public_key"]
         yield self.db.simple_insert(
             "security_keys",
             {
                 "user_id": user_id,
+                "rp_id":attestation_obj['rp_id'],
                 "credential_id": credential_id,
                 "credential_public_key": credential_public_key,
-                "attestation_object_json": attestation_object_json,
+                "certificate":attestation_obj['certificate'],
+                "certificate_issuer": attestation_obj['certificate_issuer'],
+                "certificate_subject":attestation_obj['certificate_subject'],
+                "AAGUID":base64.b64encode(attestation_obj["AAGUID"]),
+                "attestation_object_json": json.dumps(attestation_obj),
                 "client_data_json": client_data_json,
             },
             desc="add_security_key_to_user",
@@ -133,7 +137,7 @@ class SecurityKeysStore(SecurityKeysWorkerStore):
         self,
         txn,
         user_id,
-        attestation_object_json,
+        attestation_obj,
         client_data_json
     ):
         user_id_obj = UserID.from_string(user_id)
@@ -141,7 +145,6 @@ class SecurityKeysStore(SecurityKeysWorkerStore):
         now = int(self.clock.time())
 
         try:
-            attestation_obj = json.loads(attestation_object_json)
             credential_id = attestation_obj["credential_id"]
             credential_public_key = attestation_obj["credential_public_key"]
             self.db.simple_insert_txn(
@@ -149,9 +152,14 @@ class SecurityKeysStore(SecurityKeysWorkerStore):
                 "security_keys",
                 values={
                     "user_id": user_id,
-                    "credential_id": credential_id,
+                    "rp_id":attestation_obj['rp_id'],
+                    "credential_id": base64.b64encode(credential_id).decode('ascii'),
                     "credential_public_key": credential_public_key,
-                    "attestation_object_json": attestation_object_json,
+                    "certificate":attestation_obj['certificate'],
+                    "certificate_issuer": attestation_obj['certificate_issuer'],
+                    "certificate_subject":attestation_obj['certificate_subject'],
+                    "AAGUID":base64.b64encode(attestation_obj["AAGUID"]).decode('ascii'),
+                    "attestation_object_json": '',
                     "client_data_json": client_data_json,
                 },
             )
