@@ -74,13 +74,12 @@ def verify_login(rpId, clientDataJSON, authenticatorData, signature, certificate
     
     if 'challenge' not in client_data or challenge != client_data['challenge']:
         return False
-
     if 'origin' not in client_data or not _checkOrigin(rpId, client_data['origin']):
         return None
-
+        
     authenticator_data = AuthenticatorData(authenticatorData)
     m = hashlib.sha256()
-    m.update(rpId)
+    m.update(rpId.encode('ascii'))
     rp_id_hash = m.digest()
 
     if authenticator_data.getRpIdHash() != rp_id_hash:
@@ -91,19 +90,19 @@ def verify_login(rpId, clientDataJSON, authenticatorData, signature, certificate
     
     if requireUserVerification and not authenticator_data.getUserVerified():
         return False
-
     m = hashlib.sha256()
-    m.update(clientDataJSON)
+    m.update(clientDataJSON.encode('ascii'))
     client_data_json_hash = m.digest()
 
     cert = x509.load_pem_x509_certificate(certificate, default_backend())
     public_key = cert.public_key()
-
     verify_data = authenticatorData + client_data_json_hash
     try:
         public_key.verify(signature, verify_data, ec.ECDSA(hashes.SHA256()))
         return True
     except InvalidSignature:
+        logger.info("InvalidSignature")
         return False
     except Exception as e:
+        logger.info("other exception!")
         raise e

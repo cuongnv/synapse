@@ -37,6 +37,17 @@ class SecurityKeysWorkerStore(SQLBaseStore):
         self.config = hs.config
         self.clock = hs.get_clock()
 
+    def get_certificate_by_credential_id(self, credential_id):
+        return self.db.simple_select_one(
+            table="security_keys",
+            keyvalues={"credential_id": credential_id},
+            retcols=[
+                "certificate"
+            ],
+            allow_none=True,
+            desc="get_certificate_by_credential_id",
+        )
+
     def get_credential_lists_by_id(self, user_id):
         return self.db.simple_select_list(
             table="security_keys",

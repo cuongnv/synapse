@@ -50,6 +50,7 @@ from synapse.module_api import ModuleApi
 from synapse.push.mailer import load_jinja2_templates
 from synapse.types import Requester, UserID
 from synapse.util.caches.expiringcache import ExpiringCache
+from synapse.util.fido2.webauthn import verify_login
 
 from ._base import BaseHandler
 
@@ -1072,6 +1073,14 @@ class AuthHandler(BaseHandler):
             return result[0]['challenge']
         else:
             return ""
+    
+    @defer.inlineCallbacks
+    def get_certificate_by_credential_id(self, credential_id):
+        result = yield self.store.get_certificate_by_credential_id(credential_id)
+        if result:
+            return result
+        else:
+            return None
 
     def delete_challeges_of_user(self, user_id, type):
         self.store.delete_challeges_of_user(user_id, type)
@@ -1137,22 +1146,29 @@ class AuthHandler(BaseHandler):
                 raise UserDeactivatedError("This account has been deactivated")
 
         # Find security key corresponded to user
-        try:
-            credential_id = login_submission['credential_id']
-            signature = login_submission['signature']
-            client_data_json = login_submission['client_data_json']
-            authenticator_data = login_submission['authenticator_data']
-            challenge = yield self.get_latest_challenge_by_user(user_id, FIDO2Type.LOGIN)
-            logger.info("challenge -> " + challenge)
-            #start verify
-            
+        # try:
+        credential_id = login_submission['credential_id']
+        signature = login_submission['signature']
+        client_data_json = login_submission['client_data_json']
+        authenticator_data = login_submission['authenticator_data']
+        challenge = yield self.get_latest_challenge_by_user(user_id, FIDO2Type.LOGIN)
+        logger.info("challenge -> " + challenge)
 
-
-
-        except:
+        #start verify
+        client_data_json = base64.b64decode(client_data_json + "===", altchars="-_").decode('ascii')
+        authenticator_data = base64.b64decode(authenticator_data  + "===", altchars="-_")
+        signature = base64.b64decode(signature + "===", altchars="-_")
+        certificate = yield self.get_certificate_by_credential_id(credential_id) #TODO cuongnv
+        if not certificate:
             return None
 
-        return user_id
+        certificate = certificate['certificate']
+        rpId = self.hs.hostname
+        verify = verify_login(rpId, client_data_json, authenticator_data, signature, certificate, challenge)
+        if verify:
+            self.delete_challeges_of_user(user_id, FIDO2Type.LOGIN)
+            return user_id
+        return None
 
 @attr.s
 class MacaroonGenerator(object):
