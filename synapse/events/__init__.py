@@ -247,7 +247,10 @@ class EventBase(metaclass=abc.ABCMeta):
 
     @property
     def membership(self):
-        return self.content["membership"]
+        if "membership" in self.content:
+            return self.content["membership"]
+        else:
+            return None
 
     def is_state(self):
         return hasattr(self, "state_key") and self.state_key is not None
