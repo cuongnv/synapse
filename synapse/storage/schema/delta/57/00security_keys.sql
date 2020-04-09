@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS security_keys(
     rp_id TEXT NOT NULL, -- rp_id
     credential_id TEXT NOT NULL, -- credential_id of registed security key
     credential_public_key TEXT NOT NULL, -- credential public key of registed security key
-    `certificate` TEXT NOT NULL, -- certificate of registed security key
+    certificate TEXT NOT NULL, -- certificate of registed security key
     certificate_issuer TEXT NOT NULL, -- certificate_issuer of registed security key
     certificate_subject TEXT NOT NULL, -- certificate_subject of registed security key
     AAGUID TEXT NOT NULL, -- AAGUID of registed security key
