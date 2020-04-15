@@ -183,3 +183,21 @@ class SecurityKeysStore(SecurityKeysWorkerStore):
 
         except self.database_engine.module.IntegrityError:
             raise StoreError(400, "Credential ID already registed.", errcode=Codes.FIDO2_SECURITY_KEY_IN_USE)
+
+    def delete_security_key_by_credential_id(self, user_id, credential_id):
+        return self.db.runInteraction(
+            "register_security_key_to_user",
+            self._delete_security_key_by_credential_id,
+            user_id,
+            credential_id
+        )
+    
+    def _delete_security_key_by_credential_id(
+        self,
+        txn,
+        user_id,
+        credential_id
+    ):
+        self.db.simple_delete_txn(
+            txn,"security_keys",keyvalues={"user_id":user_id,"credential_id": credential_id}
+        )

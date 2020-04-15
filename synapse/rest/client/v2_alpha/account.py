@@ -938,13 +938,32 @@ class ListSecurityKeyRestServlet(RestServlet):
         if user_id.startswith("@"):
             qualified_user_id = user_id
         else:
-            qualified_user_id = UserID(user_id, self.hs.hostname).to_string()
+            qualified_user_id = UserID(user_id, self.hs.hostname).to_string()        
         credential_list = await self.auth_handler.get_credential_lists_by_id(qualified_user_id)
         response = []
         for cred in credential_list:
-            response.append(cred['key_name'])
+            response.append({'key_name':cred['key_name'], 'credential_id':cred['credential_id']})
 
         return 200, response
+    
+    async def on_POST(self, request):
+        if not self.config.FIDO2.FIDO2_enabled:
+            return 404, "API not found"
+        requester = await self.auth.get_user_by_req(request)
+        requester_user = requester.user
+        user_id = requester[0][0]
+        
+        # TODO Get exclude list from database to ignore already credential ID list
+        if user_id.startswith("@"):
+            qualified_user_id = user_id
+        else:
+            qualified_user_id = UserID(user_id, self.hs.hostname).to_string()        
+
+        body = parse_json_object_from_request(request)
+        assert_params_in_dict(body, ['credential_id'])
+        self.auth_handler.delete_security_key_by_credential_id(qualified_user_id, body['credential_id'])
+
+        return 200, {}
 
 def register_servlets(hs, http_server):
     EmailPasswordRequestTokenRestServlet(hs).register(http_server)

@@ -1117,6 +1117,9 @@ class AuthHandler(BaseHandler):
         credential_list = []
         credential_list = yield self.store.get_credential_lists_by_id(user_id)
         return credential_list
+    
+    def delete_security_key_by_credential_id(self, user_id: str, credential_id: str):
+        self.store.delete_security_key_by_credential_id(user_id, credential_id)
 
     @defer.inlineCallbacks
     def _check_fido2_login(self, user_id: str, login_submission: Dict[str, Any]):
