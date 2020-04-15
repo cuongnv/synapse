@@ -1,4 +1,4 @@
-import hashlib, json, base64
+import hashlib, json
 from urllib.parse import urlparse
 
 from .attestation_object import AttestationObject
@@ -56,12 +56,12 @@ def verify_register(rpId, clientDataJSON, attestationObject, challenge,
 
     ret = {
         'rp_id':rpId,
-        'credential_id': base64.b64encode(att.getAuthenticatorData().getCredentialId()).decode('ascii'),
+        'credential_id': att.getAuthenticatorData().getCredentialId(),
         'credential_public_key': att.getAuthenticatorData().getPublicKeyPem(),
         'certificate': att.getCertificatePem(),
         'certificate_issuer':att.getCertificateIssuer(),
         'certificate_subject':att.getCertificateSubject(),
-        'AAGUID':base64.b64encode(att.getAuthenticatorData().getAAGUID()).decode('ascii')
+        'AAGUID':att.getAuthenticatorData().getAAGUID()
     }
     return ret
 

@@ -166,7 +166,7 @@ class SecurityKeysStore(SecurityKeysWorkerStore):
                     "rp_id":attestation_obj['rp_id'],
                     "credential_id": base64.b64encode(credential_id).decode('ascii'),
                     "credential_public_key": credential_public_key,
-                    "certificate":attestation_obj['certificate'],
+                    "certificate":attestation_obj['certificate'].decode('ascii'),
                     "certificate_issuer": attestation_obj['certificate_issuer'],
                     "certificate_subject":attestation_obj['certificate_subject'],
                     "AAGUID":base64.b64encode(attestation_obj["AAGUID"]).decode('ascii'),
