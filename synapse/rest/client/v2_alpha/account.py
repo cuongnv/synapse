@@ -859,7 +859,7 @@ class SecurityKeyRestServlet(RestServlet):
             },
         	'pubKeyCredParams': [{
         		'type' : "public-key",
-        		'alg' : 7, #const cose_alg_ECDSA_w_SHA256 = -7;const cose_alg_ECDSA_w_SHA512 = -36;
+        		'alg' : -7, #const cose_alg_ECDSA_w_SHA256 = -7;const cose_alg_ECDSA_w_SHA512 = -36;
             }],
         	'timeout': self.config.FIDO2.timeout,
         	'attestation' : self.config.FIDO2.attestation, # direct, indirect, none
