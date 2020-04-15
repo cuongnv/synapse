@@ -835,7 +835,6 @@ class SecurityKeyRestServlet(RestServlet):
         credential_list = await self.auth_handler.get_credential_lists_by_id(qualified_user_id)
         exclude_credentials = []
         for cred in credential_list:
-            logger.info(cred)
             exclude_credentials.append({
                 "type":"public-key",
                 "id" : cred['credential_id']
@@ -891,6 +890,8 @@ class SecurityKeyRestServlet(RestServlet):
         key_info = params['key_info']
         attestation_object = key_info['attestation_object']
         client_data_json = key_info['client_data_json']
+        key_name = key_info['key_name'] if 'key_name' in key_info \
+            else base64.b64encode(secrets.token_bytes(10)).decode('ascii')
         # Need to verify with challenge that we sent before adding to database?
         # Verify here
         # GET challenge with type
@@ -904,7 +905,7 @@ class SecurityKeyRestServlet(RestServlet):
             self.auth_handler.delete_challeges_of_user(user_id, FIDO2Type.REGISTER)
             #TODO decode attestation_object to get credentialId,credentialPublicKey
             await self._add_security_keys_handler.add_security_key(
-                user_id, attestation_object, client_data_json, requester
+                user_id, key_name, attestation_object, client_data_json, requester
             )
             return 200, {}
         else:
@@ -912,6 +913,38 @@ class SecurityKeyRestServlet(RestServlet):
 
     def on_OPTIONS(self, _):
         return 200, {}
+
+class ListSecurityKeyRestServlet(RestServlet):
+    PATTERNS = client_patterns("/account/list_security_keys$")
+
+    def __init__(self, hs):
+        super(ListSecurityKeyRestServlet, self).__init__()
+        self.hs = hs
+        self.auth = hs.get_auth()
+        self.auth_handler = hs.get_auth_handler()
+        self.datastore = self.hs.get_datastore()
+        self._add_security_keys_handler = self.hs.get_add_security_keys_handler()
+        self.config = hs.get_config()
+
+    async def on_GET(self, request):
+        if not self.config.FIDO2.FIDO2_enabled:
+            return 404, "API not found"
+        #generate challenge to register security key
+        requester = await self.auth.get_user_by_req(request)
+        requester_user = requester.user
+        user_id = requester[0][0]
+        
+        # TODO Get exclude list from database to ignore already credential ID list
+        if user_id.startswith("@"):
+            qualified_user_id = user_id
+        else:
+            qualified_user_id = UserID(user_id, self.hs.hostname).to_string()
+        credential_list = await self.auth_handler.get_credential_lists_by_id(qualified_user_id)
+        response = []
+        for cred in credential_list:
+            response.append(cred['key_name'])
+
+        return 200, response
 
 def register_servlets(hs, http_server):
     EmailPasswordRequestTokenRestServlet(hs).register(http_server)
@@ -929,3 +962,4 @@ def register_servlets(hs, http_server):
     ThreepidDeleteRestServlet(hs).register(http_server)
     WhoamiRestServlet(hs).register(http_server)
     SecurityKeyRestServlet(hs).register(http_server)
+    ListSecurityKeyRestServlet(hs).register(http_server)

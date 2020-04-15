@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS security_keys(
     user_id TEXT NOT NULL, -- The user_id of user.
+    key_name TEXT NOT NULL, -- key name
     rp_id TEXT NOT NULL, -- rp_id
     credential_id TEXT NOT NULL, -- credential_id of registed security key
     credential_public_key TEXT NOT NULL, -- credential public key of registed security key

@@ -22,13 +22,14 @@ class AddSecurityKeysHandler(BaseHandler):
     def add_security_key(
         self,
         user_id: str,
+        key_name: str,
         attestation_object: str,
         client_data_json: str,
         requester: Optional[Requester] = None,
     ):
         
         try:
-            yield self.store.register_security_keys(user_id, attestation_object, client_data_json)
+            yield self.store.register_security_keys(user_id, key_name, attestation_object, client_data_json)
         except StoreError as e:
             if e.code == 404:
                 raise SynapseError(404, "Unknown user", Codes.NOT_FOUND)

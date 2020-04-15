@@ -54,7 +54,8 @@ class SecurityKeysWorkerStore(SQLBaseStore):
             keyvalues={"user_id": user_id},
             retcols=[
                 "credential_id",
-                "credential_public_key"
+                "credential_public_key",
+                "key_name"
             ],
             desc="get_credential_lists_by_id",
         )
@@ -91,7 +92,7 @@ class SecurityKeysStore(SecurityKeysWorkerStore):
         super(SecurityKeysStore, self).__init__(database, db_conn, hs)
 
     @defer.inlineCallbacks
-    def add_security_key_to_user(self, user_id, attestation_obj, client_data_json):
+    def add_security_key_to_user(self, user_id, key_name, attestation_obj, client_data_json):
         """Adds an security key for the given user.
 
         Args:
@@ -107,6 +108,7 @@ class SecurityKeysStore(SecurityKeysWorkerStore):
             "security_keys",
             {
                 "user_id": user_id,
+                "key_name":key_name,
                 "rp_id":attestation_obj['rp_id'],
                 "credential_id": credential_id,
                 "credential_public_key": credential_public_key,
@@ -123,6 +125,7 @@ class SecurityKeysStore(SecurityKeysWorkerStore):
     def register_security_keys(
         self,
         user_id,
+        key_name,
         attestation_object_json, 
         client_data_json
     ):
@@ -140,6 +143,7 @@ class SecurityKeysStore(SecurityKeysWorkerStore):
             "register_security_key_to_user",
             self._register_security_key_to_user,
             user_id,
+            key_name,
             attestation_object_json,
             client_data_json
         )
@@ -148,6 +152,7 @@ class SecurityKeysStore(SecurityKeysWorkerStore):
         self,
         txn,
         user_id,
+        key_name,
         attestation_obj,
         client_data_json
     ):
@@ -163,6 +168,7 @@ class SecurityKeysStore(SecurityKeysWorkerStore):
                 "security_keys",
                 values={
                     "user_id": user_id,
+                    "key_name":key_name,
                     "rp_id":attestation_obj['rp_id'],
                     "credential_id": base64.b64encode(credential_id).decode('ascii'),
                     "credential_public_key": credential_public_key,
