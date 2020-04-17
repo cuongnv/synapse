@@ -8,6 +8,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.backends.openssl.hashes import hashes
 from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.serialization import load_pem_public_key
 
 import logging
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ def verify_register(rpId, clientDataJSON, attestationObject, challenge,
     }
     return ret
 
-def verify_login(rpId, clientDataJSON, authenticatorData, signature, certificate, 
+def verify_login(rpId, clientDataJSON, authenticatorData, signature, public_key_pem, 
                 challenge, requireUserVerification=False, requireUserPresent=True):
 
     client_data = json.loads(clientDataJSON)
@@ -94,8 +95,8 @@ def verify_login(rpId, clientDataJSON, authenticatorData, signature, certificate
     m.update(clientDataJSON.encode('ascii'))
     client_data_json_hash = m.digest()
 
-    cert = x509.load_pem_x509_certificate(certificate, default_backend())
-    public_key = cert.public_key()
+    public_key_pem = bytes(public_key_pem, 'ascii') #convert string to byte array
+    public_key = load_pem_public_key(public_key_pem, default_backend())
     verify_data = authenticatorData + client_data_json_hash
     try:
         public_key.verify(signature, verify_data, ec.ECDSA(hashes.SHA256()))

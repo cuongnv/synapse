@@ -1082,6 +1082,14 @@ class AuthHandler(BaseHandler):
         else:
             return None
 
+    @defer.inlineCallbacks
+    def get_credential_public_key_by_credential_id(self, credential_id):
+        result = yield self.store.get_credential_public_key_by_credential_id(credential_id)
+        if result:
+            return result
+        else:
+            return None
+
     def delete_challeges_of_user(self, user_id, type):
         self.store.delete_challeges_of_user(user_id, type)
 
@@ -1150,7 +1158,7 @@ class AuthHandler(BaseHandler):
 
         # Find security key corresponded to user
         # try:
-        credential_id = login_submission['credential_id']
+        credential_id = base64.b64encode(base64.b64decode(login_submission['credential_id']+"===", altchars="-_")).decode('ascii')
         signature = login_submission['signature']
         client_data_json = login_submission['client_data_json']
         authenticator_data = login_submission['authenticator_data']
@@ -1161,13 +1169,13 @@ class AuthHandler(BaseHandler):
         client_data_json = base64.b64decode(client_data_json + "===", altchars="-_").decode('ascii')
         authenticator_data = base64.b64decode(authenticator_data  + "===", altchars="-_")
         signature = base64.b64decode(signature + "===", altchars="-_")
-        certificate = yield self.get_certificate_by_credential_id(credential_id) #TODO cuongnv
-        if not certificate:
+        public_key_pem = yield self.get_credential_public_key_by_credential_id(credential_id) #TODO cuongnv
+        if not public_key_pem:
             return None
 
-        certificate = certificate['certificate']
+        public_key_pem = public_key_pem['credential_public_key']
         rpId = self.hs.hostname
-        verify = verify_login(rpId, client_data_json, authenticator_data, signature, certificate, challenge)
+        verify = verify_login(rpId, client_data_json, authenticator_data, signature, public_key_pem, challenge)
         if verify:
             self.delete_challeges_of_user(user_id, FIDO2Type.LOGIN)
             return user_id
